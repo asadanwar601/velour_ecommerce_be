@@ -138,25 +138,26 @@ export class CategoriesService {
    * Admin: Create a new category / subcategory.
    */
   async createCategory(dto: CreateCategoryDto) {
+    const parent = dto.parent || ParentCategory.WOMEN;
     const slug = dto.slug
       ? dto.slug.trim().toLowerCase()
-      : `${dto.parent.toLowerCase()}-${dto.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`;
+      : `${parent.toLowerCase()}-${dto.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`;
 
     const existing = await this.prisma.category.findFirst({
       where: {
-        OR: [{ slug }, { name: dto.name.trim(), parent: dto.parent }],
+        OR: [{ slug }, { name: dto.name.trim(), parent }],
       },
     });
 
     if (existing) {
-      throw new ConflictException(`Category "${dto.name}" (${dto.parent}) or slug "${slug}" already exists`);
+      throw new ConflictException(`Category "${dto.name}" (${parent}) or slug "${slug}" already exists`);
     }
 
     const created = await this.prisma.category.create({
       data: {
         name: dto.name.trim(),
         slug,
-        parent: dto.parent,
+        parent,
         description: dto.description?.trim() || null,
         imageUrl: dto.imageUrl?.trim() || null,
         isActive: dto.isActive !== undefined ? dto.isActive : true,
@@ -167,6 +168,28 @@ export class CategoriesService {
       message: `Category "${created.name}" created successfully`,
       category: created,
     };
+  }
+
+  /**
+   * Admin: Add subcategory to parent category (e.g. 'women', 'men').
+   */
+  async createSubcategory(categoryId: string, name: string) {
+    const parent = categoryId.toUpperCase() === 'MEN' ? ParentCategory.MEN : ParentCategory.WOMEN;
+    return this.createCategory({ name, parent });
+  }
+
+  /**
+   * Admin: Delete subcategory by parent category and subcategory name.
+   */
+  async deleteSubcategory(categoryId: string, subcategoryName: string) {
+    const parent = categoryId.toUpperCase() === 'MEN' ? ParentCategory.MEN : ParentCategory.WOMEN;
+    const existing = await this.prisma.category.findFirst({
+      where: { parent, name: subcategoryName },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Subcategory "${subcategoryName}" not found in ${parent}`);
+    }
+    return this.deleteCategory(existing.id);
   }
 
   /**
@@ -186,7 +209,6 @@ export class CategoriesService {
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl?.trim() || null;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
-    // If name or parent updated, optionally update existing products matching the old category name
     const updated = await this.prisma.category.update({
       where: { id },
       data,
@@ -237,3 +259,4 @@ export class CategoriesService {
     };
   }
 }
+

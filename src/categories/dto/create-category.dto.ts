@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ParentCategory } from '@prisma/client';
+import { Transform } from 'class-transformer';
 import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateCategoryDto {
@@ -8,10 +9,20 @@ export class CreateCategoryDto {
   @IsString()
   name: string;
 
-  @ApiProperty({ enum: ParentCategory, example: ParentCategory.WOMEN, description: 'Parent gender category' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({
+    enum: ParentCategory,
+    example: ParentCategory.WOMEN,
+    description: 'Parent gender category (WOMEN or MEN, case-insensitive, defaults to WOMEN)',
+    default: ParentCategory.WOMEN,
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (!value) return ParentCategory.WOMEN;
+    const upper = String(value).toUpperCase();
+    return upper === 'MEN' ? ParentCategory.MEN : ParentCategory.WOMEN;
+  })
   @IsEnum(ParentCategory)
-  parent: ParentCategory;
+  parent?: ParentCategory = ParentCategory.WOMEN;
 
   @ApiPropertyOptional({ example: 'women-outerwear', description: 'Unique category slug' })
   @IsOptional()

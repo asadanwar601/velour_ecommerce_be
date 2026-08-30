@@ -71,6 +71,32 @@ export class CategoriesController {
     return this.categoriesService.createCategory(dto);
   }
 
+  @Post(':id/subcategories')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '[ADMIN] Add a subcategory under a parent category' })
+  async createSubcategory(
+    @Param('id') id: string,
+    @Body() dto: { name: string },
+  ) {
+    return this.categoriesService.createSubcategory(id, dto.name);
+  }
+
+  @Delete(':id/subcategories/:name')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[ADMIN] Delete a subcategory from a parent category' })
+  async deleteSubcategory(
+    @Param('id') id: string,
+    @Param('name') name: string,
+  ) {
+    return this.categoriesService.deleteSubcategory(id, decodeURIComponent(name));
+  }
+
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)

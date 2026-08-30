@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -13,7 +14,7 @@ import {
 import { ParentCategory } from '@prisma/client';
 
 export class CreateProductDto {
-  @ApiProperty({ example: 'w-double-breasted-wool-coat', description: 'Product unique ID/slug' })
+  @ApiPropertyOptional({ example: 'w-double-breasted-wool-coat', description: 'Product unique ID/slug' })
   @IsOptional()
   @IsString()
   id?: string;
@@ -23,7 +24,17 @@ export class CreateProductDto {
   @IsNotEmpty()
   name: string;
 
+  @ApiPropertyOptional({ example: 'Velour Atelier', description: 'Brand name' })
+  @IsOptional()
+  @IsString()
+  brand?: string;
+
   @ApiProperty({ enum: ParentCategory, example: ParentCategory.WOMEN, description: 'Top level category' })
+  @Transform(({ value }) => {
+    if (!value) return ParentCategory.WOMEN;
+    const upper = String(value).toUpperCase();
+    return upper === 'MEN' ? ParentCategory.MEN : ParentCategory.WOMEN;
+  })
   @IsEnum(ParentCategory)
   category: ParentCategory;
 
@@ -69,15 +80,27 @@ export class CreateProductDto {
   @IsString()
   careInstructions?: string;
 
-  @ApiProperty({ example: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3', description: 'Primary image' })
+  @ApiPropertyOptional({ example: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3', description: 'Primary image' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  primaryImageUrl: string;
+  primaryImageUrl?: string;
 
-  @ApiProperty({ example: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea', description: 'Hover image' })
+  @ApiPropertyOptional({ example: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea', description: 'Hover image' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  hoverImageUrl: string;
+  hoverImageUrl?: string;
+
+  @ApiPropertyOptional({
+    example: [
+      'https://images.unsplash.com/photo-1539533018447-63fcce2678e3',
+      'https://images.unsplash.com/photo-1591047139829-d91aecb6caea',
+    ],
+    description: 'Array of image URLs (falls back to primary/hover/gallery)',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 
   @ApiPropertyOptional({
     example: [

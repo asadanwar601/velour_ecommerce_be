@@ -21,9 +21,10 @@ export class ProductManagementService {
       where: { OR: [{ id: productSlug }, { slug: productSlug }] },
     });
 
-    if (existingProduct) {
-      throw new ConflictException(`Product with slug/id "${productSlug}" already exists`);
-    }
+    const defaultImage = 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=1000&q=80';
+    const primaryImageUrl = createProductDto.primaryImageUrl || createProductDto.images?.[0] || defaultImage;
+    const hoverImageUrl = createProductDto.hoverImageUrl || createProductDto.images?.[1] || primaryImageUrl;
+    const galleryImages = createProductDto.galleryImages || (createProductDto.images ? createProductDto.images.slice(2) : []);
 
     return this.prisma.$transaction(async (tx) => {
       const createdProduct = await tx.product.create({
@@ -41,15 +42,16 @@ export class ProductManagementService {
           materials: createProductDto.materials || '100% Premium Natural Fibers',
           careInstructions: createProductDto.careInstructions || 'Dry clean recommended.',
           sizeGuide: createProductDto.sizeGuide || null,
-          primaryImageUrl: createProductDto.primaryImageUrl,
-          hoverImageUrl: createProductDto.hoverImageUrl || createProductDto.primaryImageUrl,
-          galleryImages: createProductDto.galleryImages || [],
+          primaryImageUrl,
+          hoverImageUrl,
+          galleryImages,
           tags: createProductDto.tags || [],
           featured: createProductDto.featured || false,
           isNew: createProductDto.isNew || false,
           trending: createProductDto.trending || false,
         },
       });
+
 
       let warehouse = await tx.location.findFirst({
         where: { type: LocationType.WAREHOUSE },
@@ -106,9 +108,22 @@ export class ProductManagementService {
     if (updateProductDto.materials) updatePayload.materials = updateProductDto.materials;
     if (updateProductDto.careInstructions) updatePayload.careInstructions = updateProductDto.careInstructions;
     if (updateProductDto.sizeGuide !== undefined) updatePayload.sizeGuide = updateProductDto.sizeGuide;
-    if (updateProductDto.primaryImageUrl) updatePayload.primaryImageUrl = updateProductDto.primaryImageUrl;
-    if (updateProductDto.hoverImageUrl) updatePayload.hoverImageUrl = updateProductDto.hoverImageUrl;
-    if (updateProductDto.galleryImages) updatePayload.galleryImages = updateProductDto.galleryImages;
+    if (updateProductDto.primaryImageUrl) {
+      updatePayload.primaryImageUrl = updateProductDto.primaryImageUrl;
+    } else if (updateProductDto.images?.[0]) {
+      updatePayload.primaryImageUrl = updateProductDto.images[0];
+    }
+    if (updateProductDto.hoverImageUrl) {
+      updatePayload.hoverImageUrl = updateProductDto.hoverImageUrl;
+    } else if (updateProductDto.images?.[1]) {
+      updatePayload.hoverImageUrl = updateProductDto.images[1];
+    }
+    if (updateProductDto.galleryImages) {
+      updatePayload.galleryImages = updateProductDto.galleryImages;
+    } else if (updateProductDto.images && updateProductDto.images.length > 2) {
+      updatePayload.galleryImages = updateProductDto.images.slice(2);
+    }
+
     if (updateProductDto.tags) updatePayload.tags = updateProductDto.tags;
     if (updateProductDto.featured !== undefined) updatePayload.featured = updateProductDto.featured;
     if (updateProductDto.isNew !== undefined) updatePayload.isNew = updateProductDto.isNew;
