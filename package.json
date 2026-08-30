@@ -16,8 +16,10 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "prisma:seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
-    "test:qa": "node scripts/test-qa-automation-suite.mjs"
+    "test:qa": "node scripts/test-qa-automation-suite.mjs",
+    "test:qa:full": "node scripts/run-qa-full-audit.mjs"
   },
+
   "prisma": {
     "seed": "ts-node -r tsconfig-paths/register prisma/seed.ts"
   },
