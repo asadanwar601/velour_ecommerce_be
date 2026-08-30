@@ -82,16 +82,19 @@ export class CategoriesService {
     return [
       {
         id: 'women',
+        slug: 'women',
         name: 'Women',
         subcategories: womenSubs,
       },
       {
         id: 'men',
+        slug: 'men',
         name: 'Men',
         subcategories: menSubs,
       },
     ];
   }
+
 
   // ─── ADMIN CRUD OPERATIONS ──────────────────────────────────────────
 
