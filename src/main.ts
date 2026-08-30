@@ -39,7 +39,7 @@ async function bootstrap() {
 
   // 2. CORS Configuration
   // FRONTEND_URL supports a comma-separated list for multi-origin setups
-  // e.g. "https://velour.vercel.app,https://velour-git-main-asad.vercel.app"
+  // e.g. "https://velourecommercefe.vercel.app,https://velour-git-main-asad.vercel.app"
   app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, curl, server-to-server)
@@ -58,10 +58,11 @@ async function bootstrap() {
         'http://localhost:3001',
       ];
 
-      // Allow Vercel preview deployment URLs (*.vercel.app) in any environment
-      const isVercelPreview = /^https:\/\/[a-z0-9-]+-[a-z0-9]+-[a-z0-9]+\.vercel\.app$/.test(origin);
+      // Allow ANY *.vercel.app subdomain (covers both production & preview deployments)
+      // e.g. velourecommercefe.vercel.app  OR  velour-git-main-asad.vercel.app
+      const isVercelApp = /^https:\/\/[a-z0-9][a-z0-9-]*\.vercel\.app$/.test(origin);
 
-      if (nodeEnv === 'development' || allowedOrigins.includes(origin) || isVercelPreview) {
+      if (nodeEnv === 'development' || allowedOrigins.includes(origin) || isVercelApp) {
         return callback(null, true);
       }
 
@@ -71,6 +72,7 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'Accept'],
   });
+
 
 
   // 3. Swagger OpenAPI Documentation at /docs
