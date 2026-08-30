@@ -1,0 +1,519 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum ParentCategory {
+  WOMEN
+  MEN
+}
+
+enum LocationType {
+  WAREHOUSE
+  STORE
+}
+
+enum StockMovementType {
+  RESTOCK
+  SALE
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum OtpChannel {
+  EMAIL
+  WHATSAPP
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum FitRating {
+  RUNS_SMALL
+  TRUE_TO_SIZE
+  RUNS_LARGE
+}
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  RECEIVED
+  REFUNDED
+}
+
+enum ReturnReason {
+  SIZE_TOO_SMALL
+  SIZE_TOO_LARGE
+  NOT_AS_DESCRIBED
+  DEFECTIVE
+  CHANGED_MIND
+  OTHER
+}
+
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  phone            String?   @unique
+  password         String?   // Nullable for passwordless / OAuth / OTP users
+  googleId         String?   @unique // Google OAuth subject ID
+  avatarUrl        String?   // User profile picture from Google/OAuth
+  firstName        String?
+  lastName         String?
+  birthday         DateTime?
+  preferences      Json?     // Category preferences, VIP notification toggles
+  twoFactorEnabled Boolean   @default(false)
+  isEmailVerified  Boolean   @default(false)
+  isActive         Boolean   @default(true)
+  isArchived       Boolean   @default(false)
+  archivedAt       DateTime?
+  role             Role      @default(CUSTOMER)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  cart      Cart?
+  wishlist  Wishlist?
+  orders    Order[]
+  addresses Address[]
+  reviews   Review[]
+  returns   Return[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model Address {
+  id            String   @id @default(uuid())
+  userId        String
+  label         String?  // e.g. "Home", "Work"
+  recipientName String?  // e.g. "Elena Rostova"
+  phone         String?  // Contact phone for delivery
+  line1         String
+  line2         String?
+  city          String
+  state         String
+  zip           String
+  country       String   @default("US")
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
+}
+
+model Category {
+  id          String         @id @default(uuid())
+  name        String
+  slug        String         @unique
+  parent      ParentCategory
+  description String?
+  imageUrl    String?
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@map("categories")
+}
+
+model Product {
+  id               String         @id // Matches slug format (e.g. "w-double-breasted-wool-coat")
+  slug             String         @unique
+  name             String
+  category         ParentCategory
+  subcategory      String
+  price            Decimal        @db.Decimal(10, 2)
+  compareAtPrice   Decimal?       @db.Decimal(10, 2)
+  description      String         @db.Text
+  sizes            String[]       // e.g. ["XS", "S", "M", "L", "XL"]
+  colors           String[]       @default([]) // e.g. ["Black", "Camel", "Ivory"]
+  materials        String?        @db.Text
+  careInstructions String?        @db.Text
+  sizeGuide        Json?          // Detailed measurement chart per size
+  primaryImageUrl  String
+  hoverImageUrl    String
+  galleryImages    String[]       @default([]) // Array of additional gallery photo URLs
+  tags             String[]       @default([]) // e.g. ["Featured", "New Arrival", "Bestseller"]
+  featured         Boolean        @default(false)
+  isNew            Boolean        @default(false)
+  trending         Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  inventoryItems   InventoryItem[]
+  stockMovements   StockMovement[]
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
+  wishlistItems    WishlistItem[]
+  reviews          Review[]
+  returnItems      ReturnItem[]
+
+  @@index([category])
+  @@index([subcategory])
+  @@index([featured])
+  @@index([isNew])
+  @@index([trending])
+  @@map("products")
+}
+
+model BrandSetting {
+  id                    String   @id @default("default")
+  brandName             String   @default("VELOUR")
+  tagline               String?  @default("Quiet Luxury & Modern Atelier")
+  logoUrl               String?  @default("https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=400&q=80")
+  iconUrl               String?
+  faviconUrl            String?
+  currency              String   @default("USD")
+  currencySymbol        String   @default("$")
+  supportEmail          String?  @default("care@velour.com")
+  supportPhone          String?  @default("+1 (800) 555-0199")
+  instagramUrl          String?  @default("https://instagram.com/velour.atelier")
+  facebookUrl           String?
+  youtubeUrl            String?
+  websiteUrl            String?  @default("https://velour.com")
+  taxId                 String?  @default("US-VAT-84920194")
+  addressLine           String?  @default("482 Mercer Street, SoHo, NY 10013")
+  freeShippingThreshold Decimal  @default(75.00) @db.Decimal(10, 2)
+  announcementBarText   String?  @default("Complimentary Express Shipping on Orders Over $75 • Atelier Gift Packaging Included")
+  announcementBarActive Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("brand_settings")
+}
+
+model Location {
+  id             String          @id @default(uuid())
+  name           String
+  type           LocationType    @default(WAREHOUSE)
+  address        String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  inventoryItems InventoryItem[]
+  stockMovements StockMovement[]
+
+  @@map("locations")
+}
+
+model InventoryItem {
+  id                String   @id @default(uuid())
+  productId         String
+  locationId        String
+  quantity          Int      @default(0)
+  lowStockThreshold Int      @default(5)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, locationId])
+  @@index([productId])
+  @@index([locationId])
+  @@map("inventory_items")
+}
+
+model StockMovement {
+  id         String            @id @default(uuid())
+  productId  String
+  locationId String
+  type       StockMovementType
+  quantity   Int               // Signed quantity (positive for RESTOCK/TRANSFER_IN, negative for SALE/TRANSFER_OUT)
+  reason     String?
+  createdAt  DateTime          @default(now())
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([locationId])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
+
+model Cart {
+  id          String     @id @default(uuid())
+  userId      String?    @unique
+  anonymousId String?    @unique // Device/session token for guest carts
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String
+  productId String
+  size      String
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId, size])
+  @@index([cartId])
+  @@index([productId])
+  @@map("cart_items")
+}
+
+model Wishlist {
+  id          String         @id @default(uuid())
+  userId      String?        @unique
+  anonymousId String?        @unique
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  user  User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WishlistItem[]
+
+  @@map("wishlists")
+}
+
+model WishlistItem {
+  id         String   @id @default(uuid())
+  wishlistId String
+  productId  String
+  createdAt  DateTime @default(now())
+
+  wishlist Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([wishlistId, productId])
+  @@index([wishlistId])
+  @@index([productId])
+  @@map("wishlist_items")
+}
+
+model Coupon {
+  id            String       @id @default(uuid())
+  code          String       @unique // e.g. "WELCOME10", "VELOUR20"
+  description   String?
+  discountType  DiscountType @default(PERCENTAGE)
+  discountValue Decimal      @db.Decimal(10, 2) // e.g. 10 for 10% or 25 for $25 off
+  minOrderValue Decimal?     @db.Decimal(10, 2) // e.g. 100 for min $100 order
+  maxDiscount   Decimal?     @db.Decimal(10, 2) // cap on percentage discounts
+  validFrom     DateTime     @default(now())
+  validUntil    DateTime?
+  usageLimit    Int?         // Total redemption cap
+  usageCount    Int          @default(0)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@map("coupons")
+}
+
+model Review {
+  id                 String    @id @default(uuid())
+  productId          String
+  userId             String?
+  userName           String
+  userEmail          String?
+  rating             Int       // 1 to 5 stars
+  title              String?
+  comment            String    @db.Text
+  fitRating          FitRating @default(TRUE_TO_SIZE)
+  isVerifiedPurchase Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([rating])
+  @@map("reviews")
+}
+
+model Order {
+  id                String      @id @default(uuid())
+  userId            String?
+  orderNumber       String      @unique // e.g. "VLR-2026-00001"
+  status            OrderStatus @default(PENDING)
+  subtotal          Decimal     @db.Decimal(10, 2)
+  shipping          Decimal     @db.Decimal(10, 2)
+  discount          Decimal     @default(0) @db.Decimal(10, 2)
+  total             Decimal     @db.Decimal(10, 2)
+  promoCode         String?
+  shippingAddress   Json        // Immutable snapshot of shipping address at purchase
+  contactName       String
+  contactEmail      String
+  contactPhone      String?
+  carrier           String?     // e.g. "FedEx Express", "DHL Express"
+  trackingNumber    String?     // e.g. "VLR-TRK-987654"
+  estimatedDelivery DateTime?
+  giftPackaging     Boolean     @default(false)
+  giftNote          String?     @db.Text
+  cancelledAt       DateTime?
+  cancelReason      String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  user    User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items   OrderItem[]
+  returns Return[]
+
+  @@index([userId])
+  @@index([orderNumber])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  productId String
+  size      String
+  quantity  Int
+  price     Decimal  @db.Decimal(10, 2) // Immutable price snapshot AT PURCHASE TIME
+
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  returnItems ReturnItem[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model Return {
+  id             String       @id @default(uuid())
+  orderId        String
+  userId         String?
+  status         ReturnStatus @default(REQUESTED)
+  reason         ReturnReason @default(SIZE_TOO_SMALL)
+  comments       String?      @db.Text
+  trackingNumber String?
+  refundAmount   Decimal?     @db.Decimal(10, 2)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items ReturnItem[]
+
+  @@index([orderId])
+  @@index([status])
+  @@map("returns")
+}
+
+model ReturnItem {
+  id          String @id @default(uuid())
+  returnId    String
+  orderItemId String
+  productId   String
+  quantity    Int    @default(1)
+
+  return    Return    @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([returnId])
+  @@index([orderItemId])
+  @@map("return_items")
+}
+
+model OtpVerification {
+  id         String     @id @default(uuid())
+  identifier String     // Email address or phone number (E.164)
+  channel    OtpChannel
+  otpHash    String     // bcrypt-hashed OTP, never plain text
+  expiresAt  DateTime
+  verified   Boolean    @default(false)
+  attempts   Int        @default(0) // Capped at 5 to prevent brute-force attacks
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([identifier, channel])
+  @@map("otp_verifications")
+}
+
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model BlacklistedToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@map("blacklisted_tokens")
+}
+
+model AboutPageSetting {
+  id              String   @id @default("default")
+  heroTitle       String   @default("Form, Texture, & Permanence")
+  heroSubtitle    String?  @default("Our Philosophy")
+  bannerImageUrl  String?  @default("https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=80")
+  storyHtml       String   @db.Text
+  missionTitle    String?  @default("Artisanal Materiality")
+  missionText     String?  @db.Text
+  valuesJson      Json?    // Array of { title, description, icon }
+  milestonesJson  Json?    // Array of { year, title, description }
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("about_page_settings")
+}
+
+model ContactPageSetting {
+  id               String   @id @default("default")
+  title            String   @default("How May We Assist You?")
+  subtitle         String?  @default("Client Care")
+  description      String?  @default("Our concierge team is available Monday through Friday from 9:00 AM to 6:00 PM EST to assist with styling advice, garment measurements, and private appointments.")
+  supportEmail     String?  @default("concierge@velour.com")
+  supportPhone     String?  @default("+1 (800) 555-0198")
+  workingHours     String?  @default("Monday – Friday: 9:00 AM – 6:00 PM EST")
+  addressLine1     String?  @default("482 Mercer Street")
+  addressLine2     String?  @default("SoHo, New York, NY 10013")
+  mapEmbedUrl      String?  @db.Text
+  contactStepsJson Json?    // Array of { stepNumber, title, description }
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("contact_page_settings")
+}
+

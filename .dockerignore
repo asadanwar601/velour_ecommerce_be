@@ -1,0 +1,15 @@
+node_modules
+dist
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.git
+.gitignore
+.env
+.DS_Store
+.idea
+.vscode
+*.md
+!README.md
+test-api.ts
+coverage

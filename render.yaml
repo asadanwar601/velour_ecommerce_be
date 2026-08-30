@@ -1,0 +1,82 @@
+# Render Blueprint — VELOUR NestJS API
+# Docs: https://render.com/docs/blueprint-spec
+#
+# HOW TO USE:
+# 1. Push ecommerce-BE to GitHub
+# 2. Go to render.com → New → Blueprint
+# 3. Connect your repo → Render reads this file automatically
+# 4. Fill in secret environment variables in the Render dashboard
+
+services:
+  - type: web
+    name: velour-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+
+    # Auto-deploy on every push to main
+    autoDeploy: true
+    branch: main
+
+    # Health check — Render uses this to confirm the service is up
+    healthCheckPath: /health
+
+    envVars:
+      # ─── Runtime ──────────────────────────────────────────────────────────
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+
+      # ─── Database (set in Render dashboard — DO NOT commit real values) ──
+      - key: DATABASE_URL
+        sync: false   # Marks as secret — must be filled in dashboard
+
+      # ─── JWT ──────────────────────────────────────────────────────────────
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRATION
+        value: 15m
+
+      # ─── Frontend CORS (your Vercel URL) ─────────────────────────────────
+      - key: FRONTEND_URL
+        sync: false   # e.g. https://velour-atelier.vercel.app
+
+      # ─── Google OAuth ─────────────────────────────────────────────────────
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+
+      # ─── Rate limiting ────────────────────────────────────────────────────
+      - key: THROTTLE_TTL
+        value: 60000
+      - key: THROTTLE_LIMIT
+        value: 100
+
+      # ─── OTP ──────────────────────────────────────────────────────────────
+      - key: OTP_EXPIRY_MINUTES
+        value: 10
+      - key: OTP_MAX_ATTEMPTS
+        value: 5
+
+      # ─── Seeding (true on first deploy, then set to false) ───────────────
+      - key: AUTO_SEED
+        value: true
+
+      # ─── SMTP (optional) ──────────────────────────────────────────────────
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        value: "VELOUR Atelier <no-reply@velour.com>"
+
+      # ─── Upload limits ────────────────────────────────────────────────────
+      - key: MAX_UPLOAD_SIZE_MB
+        value: 10
