@@ -10,10 +10,11 @@
  * ============================================================================
  */
 
+import process from 'node:process';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { API_BASE_URL } from './client.js';
 import { registerAuthTools } from './tools/auth.js';
 import { registerProductTools } from './tools/products.js';
@@ -64,7 +65,7 @@ async function startSse(port: number): Promise<void> {
   app.use(express.json());
 
   // Health check
-  app.get('/', (_req, res) => {
+  app.get('/', (_req: Request, res: Response) => {
     res.json({
       status: 'ok',
       service: 'velour-ecommerce-mcp',
@@ -78,12 +79,12 @@ async function startSse(port: number): Promise<void> {
     });
   });
 
-  app.get('/health', (_req, res) => {
+  app.get('/health', (_req: Request, res: Response) => {
     res.status(200).send('OK');
   });
 
   // SSE Stream endpoint
-  app.get('/sse', async (req, res) => {
+  app.get('/sse', async (req: Request, res: Response) => {
     console.log(`[velour-mcp-server] Client connected to /sse`);
     const transport = new SSEServerTransport('/messages', res);
     transports[transport.sessionId] = transport;
@@ -97,7 +98,7 @@ async function startSse(port: number): Promise<void> {
   });
 
   // Client messages POST endpoint
-  app.post('/messages', async (req, res) => {
+  app.post('/messages', async (req: Request, res: Response) => {
     const sessionId = req.query.sessionId as string;
     const transport = transports[sessionId];
 

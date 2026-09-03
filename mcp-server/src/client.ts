@@ -3,8 +3,11 @@
  * Connects to https://velour-ecommerce-be.onrender.com
  */
 
+import process from 'node:process';
+
 export const API_BASE_URL =
   process.env.VELOUR_API_URL?.replace(/\/$/, '') || 'https://velour-ecommerce-be.onrender.com';
+
 
 let dynamicToken: string | null =
   process.env.VELOUR_ADMIN_TOKEN || process.env.VELOUR_AUTH_TOKEN || null;
