@@ -150,7 +150,7 @@ async function verifyToken(token: string): Promise<Identity | null> {
   const url = `${API_BASE_URL.replace(/\/+$/, '')}${config.authVerifyPath}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(15_000),
   });
 
   let identity: Identity | null = null;
@@ -189,7 +189,8 @@ const headerValue = (req: Request, name: string): string | undefined => {
 };
 
 const deviceIdOf = (req: Request): string | undefined => {
-  const v = headerValue(req, 'x-device-id');
+  const q = typeof req.query.deviceId === 'string' ? req.query.deviceId : undefined;
+  const v = (headerValue(req, 'x-device-id') ?? q)?.trim();
   return v && /^[\w.:-]{1,128}$/.test(v) ? v : undefined;
 };
 
