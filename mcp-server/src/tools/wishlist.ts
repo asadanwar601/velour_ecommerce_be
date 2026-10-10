@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatToolResponse } from '../client.js';
+import { apiRequest, formatToolResponse, safeSegment } from '../client.js';
 import { McpRole } from '../types.js';
 
 export function registerWishlistTools(server: McpServer, role: McpRole = 'all'): void {
@@ -14,8 +14,11 @@ export function registerWishlistTools(server: McpServer, role: McpRole = 'all'):
     'velour_wishlist_get',
     'Get saved pieces in the wishlist for the current authenticated user or guest device.',
     {},
-    async () => {
-      const res = await apiRequest('/wishlist');
+    async (_args, extra) => {
+      const res = await apiRequest('/wishlist', {
+        sessionId: extra.sessionId,
+        requiredRole: 'customer',
+      });
       return formatToolResponse(res);
     },
   );
@@ -25,12 +28,14 @@ export function registerWishlistTools(server: McpServer, role: McpRole = 'all'):
     'velour_wishlist_add',
     'Save a garment piece to the wishlist.',
     {
-      productId: z.string().describe('Product SKU ID to save'),
+      productId: z.string().min(1).max(128).describe('Product SKU ID to save'),
     },
-    async ({ productId }) => {
+    async ({ productId }, extra) => {
       const res = await apiRequest('/wishlist/items', {
         method: 'POST',
         body: { productId },
+        sessionId: extra.sessionId,
+        requiredRole: 'customer',
       });
       return formatToolResponse(res);
     },
@@ -41,11 +46,13 @@ export function registerWishlistTools(server: McpServer, role: McpRole = 'all'):
     'velour_wishlist_remove',
     'Remove a garment piece from the wishlist.',
     {
-      productId: z.string().describe('Product SKU ID to remove'),
+      productId: z.string().min(1).max(128).describe('Product SKU ID to remove'),
     },
-    async ({ productId }) => {
-      const res = await apiRequest(`/wishlist/items/${productId}`, {
+    async ({ productId }, extra) => {
+      const res = await apiRequest(`/wishlist/items/${safeSegment(productId)}`, {
         method: 'DELETE',
+        sessionId: extra.sessionId,
+        requiredRole: 'customer',
       });
       return formatToolResponse(res);
     },
@@ -56,13 +63,15 @@ export function registerWishlistTools(server: McpServer, role: McpRole = 'all'):
     'velour_wishlist_move_to_cart',
     'Move a saved wishlist piece directly into the shopping bag with chosen size.',
     {
-      productId: z.string().describe('Product SKU ID'),
-      size: z.string().default('M').describe('Garment size'),
+      productId: z.string().min(1).max(128).describe('Product SKU ID'),
+      size: z.string().min(1).max(32).default('M').describe('Garment size'),
     },
-    async ({ productId, size }) => {
-      const res = await apiRequest(`/wishlist/items/${productId}/move-to-cart`, {
+    async ({ productId, size }, extra) => {
+      const res = await apiRequest(`/wishlist/items/${safeSegment(productId)}/move-to-cart`, {
         method: 'POST',
         body: { size },
+        sessionId: extra.sessionId,
+        requiredRole: 'customer',
       });
       return formatToolResponse(res);
     },

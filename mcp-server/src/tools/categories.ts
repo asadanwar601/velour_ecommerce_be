@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatToolResponse } from '../client.js';
+import { apiRequest, formatToolResponse, safeSegment } from '../client.js';
 import { McpRole } from '../types.js';
 
 export function registerCategoryTools(server: McpServer, role: McpRole = 'all'): void {
@@ -13,8 +13,12 @@ export function registerCategoryTools(server: McpServer, role: McpRole = 'all'):
       {
         parent: z.enum(['women', 'men']).optional().describe('Filter by parent gender category'),
       },
-      async ({ parent }) => {
-        const res = await apiRequest('/categories', { params: { parent } });
+      async ({ parent }, extra) => {
+        const res = await apiRequest('/categories', {
+          params: { parent },
+          sessionId: extra.sessionId,
+          requiredRole: 'public',
+        });
         return formatToolResponse(res);
       },
     );
@@ -27,8 +31,11 @@ export function registerCategoryTools(server: McpServer, role: McpRole = 'all'):
       'velour_categories_admin_list',
       '[ADMIN] List all registered categories with live product count metrics.',
       {},
-      async () => {
-        const res = await apiRequest('/categories/admin');
+      async (_args, extra) => {
+        const res = await apiRequest('/categories/admin', {
+          sessionId: extra.sessionId,
+          requiredRole: 'admin',
+        });
         return formatToolResponse(res);
       },
     );
@@ -38,15 +45,17 @@ export function registerCategoryTools(server: McpServer, role: McpRole = 'all'):
       'velour_categories_create',
       '[ADMIN] Register a new category or subcategory with display name and parent gender.',
       {
-        name: z.string().describe('Category title (e.g. "Tailoring", "Silk Scarves")'),
+        name: z.string().min(1).max(100).describe('Category title (e.g. "Tailoring", "Silk Scarves")'),
         parent: z.enum(['WOMEN', 'MEN', 'women', 'men']).default('WOMEN').describe('Parent category'),
-        slug: z.string().optional().describe('URL slug identifier'),
-        description: z.string().optional().describe('Category description'),
+        slug: z.string().max(100).optional().describe('URL slug identifier'),
+        description: z.string().max(500).optional().describe('Category description'),
       },
-      async (body) => {
+      async (body, extra) => {
         const res = await apiRequest('/categories', {
           method: 'POST',
           body,
+          sessionId: extra.sessionId,
+          requiredRole: 'admin',
         });
         return formatToolResponse(res);
       },
@@ -58,12 +67,14 @@ export function registerCategoryTools(server: McpServer, role: McpRole = 'all'):
       '[ADMIN] Add a subcategory under a parent category (e.g. under "women" or "men").',
       {
         parentCategoryId: z.enum(['women', 'men']).describe('Parent category identifier'),
-        name: z.string().describe('Subcategory display name (e.g. "Cashmere Knits")'),
+        name: z.string().min(1).max(100).describe('Subcategory display name (e.g. "Cashmere Knits")'),
       },
-      async ({ parentCategoryId, name }) => {
-        const res = await apiRequest(`/categories/${parentCategoryId}/subcategories`, {
+      async ({ parentCategoryId, name }, extra) => {
+        const res = await apiRequest(`/categories/${safeSegment(parentCategoryId)}/subcategories`, {
           method: 'POST',
           body: { name },
+          sessionId: extra.sessionId,
+          requiredRole: 'admin',
         });
         return formatToolResponse(res);
       },
@@ -75,12 +86,17 @@ export function registerCategoryTools(server: McpServer, role: McpRole = 'all'):
       '[ADMIN] Remove a subcategory under a parent category.',
       {
         parentCategoryId: z.enum(['women', 'men']).describe('Parent category identifier'),
-        subcategoryName: z.string().describe('Subcategory name to remove'),
+        subcategoryName: z.string().min(1).max(100).describe('Subcategory name to remove'),
       },
-      async ({ parentCategoryId, subcategoryName }) => {
-        const res = await apiRequest(`/categories/${parentCategoryId}/subcategories/${encodeURIComponent(subcategoryName)}`, {
-          method: 'DELETE',
-        });
+      async ({ parentCategoryId, subcategoryName }, extra) => {
+        const res = await apiRequest(
+          `/categories/${safeSegment(parentCategoryId)}/subcategories/${safeSegment(subcategoryName)}`,
+          {
+            method: 'DELETE',
+            sessionId: extra.sessionId,
+            requiredRole: 'admin',
+          },
+        );
         return formatToolResponse(res);
       },
     );
@@ -90,11 +106,13 @@ export function registerCategoryTools(server: McpServer, role: McpRole = 'all'):
       'velour_categories_delete',
       '[ADMIN] Delete a category by ID (guarded: cannot delete if products are currently assigned).',
       {
-        id: z.string().describe('Category unique ID'),
+        id: z.string().min(1).max(128).describe('Category unique ID'),
       },
-      async ({ id }) => {
-        const res = await apiRequest(`/categories/${id}`, {
+      async ({ id }, extra) => {
+        const res = await apiRequest(`/categories/${safeSegment(id, ['admin'])}`, {
           method: 'DELETE',
+          sessionId: extra.sessionId,
+          requiredRole: 'admin',
         });
         return formatToolResponse(res);
       },

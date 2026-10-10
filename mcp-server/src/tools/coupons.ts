@@ -11,13 +11,15 @@ export function registerCouponTools(server: McpServer, role: McpRole = 'all'): v
       'velour_coupons_validate',
       'Validate a promotional discount code and calculate the exact dollar discount on an order total.',
       {
-        code: z.string().describe('Coupon code (e.g. "WELCOME10")'),
+        code: z.string().min(1).max(64).describe('Coupon code (e.g. "WELCOME10")'),
         orderTotal: z.number().positive().describe('Cart subtotal in USD before discount'),
       },
-      async (body) => {
+      async (body, extra) => {
         const res = await apiRequest('/coupons/validate', {
           method: 'POST',
           body,
+          sessionId: extra.sessionId,
+          requiredRole: 'public',
         });
         return formatToolResponse(res);
       },
@@ -28,8 +30,11 @@ export function registerCouponTools(server: McpServer, role: McpRole = 'all'): v
       'velour_coupons_list',
       'List active promotional offers and public banner codes.',
       {},
-      async () => {
-        const res = await apiRequest('/coupons');
+      async (_args, extra) => {
+        const res = await apiRequest('/coupons', {
+          sessionId: extra.sessionId,
+          requiredRole: 'public',
+        });
         return formatToolResponse(res);
       },
     );
@@ -42,18 +47,20 @@ export function registerCouponTools(server: McpServer, role: McpRole = 'all'): v
       'velour_coupons_admin_create',
       '[ADMIN] Create a new promotional discount coupon.',
       {
-        code: z.string().describe('Unique uppercase coupon code (e.g. "VIP25")'),
+        code: z.string().min(1).max(64).describe('Unique uppercase coupon code (e.g. "VIP25")'),
         discountType: z.enum(['PERCENTAGE', 'FIXED_AMOUNT']).describe('Discount computation model'),
         discountValue: z.number().positive().describe('Discount percentage (e.g. 15 for 15%) or fixed dollar amount'),
-        minOrderValue: z.number().optional().default(0).describe('Minimum order subtotal required to apply'),
-        maxUses: z.number().optional().describe('Maximum number of total redemptions allowed'),
-        description: z.string().optional().describe('Campaign description'),
+        minOrderValue: z.number().min(0).optional().default(0).describe('Minimum order subtotal required to apply'),
+        maxUses: z.number().int().positive().optional().describe('Maximum number of total redemptions allowed'),
+        description: z.string().max(500).optional().describe('Campaign description'),
         expiresAt: z.string().optional().describe('Expiration ISO timestamp (e.g. "2026-12-31T23:59:59Z")'),
       },
-      async (body) => {
+      async (body, extra) => {
         const res = await apiRequest('/coupons/admin', {
           method: 'POST',
           body,
+          sessionId: extra.sessionId,
+          requiredRole: 'admin',
         });
         return formatToolResponse(res);
       },
@@ -64,8 +71,11 @@ export function registerCouponTools(server: McpServer, role: McpRole = 'all'): v
       'velour_coupons_admin_list_all',
       '[ADMIN] List all coupons with redemption statistics, usage counts, and status.',
       {},
-      async () => {
-        const res = await apiRequest('/coupons/admin/all');
+      async (_args, extra) => {
+        const res = await apiRequest('/coupons/admin/all', {
+          sessionId: extra.sessionId,
+          requiredRole: 'admin',
+        });
         return formatToolResponse(res);
       },
     );

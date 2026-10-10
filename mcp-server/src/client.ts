@@ -1,114 +1,228 @@
 /**
+ * ============================================================================
  * VELOUR API Client for MCP Server
- * Connects to https://velour-ecommerce-be.onrender.com
+ * ============================================================================
+ * Security invariants:
+ * 1. In HTTP/SSE mode, every tool request is strictly isolated to its MCP
+ *    session (`sessionId`). Global environment tokens (`VELOUR_ADMIN_TOKEN`,
+ *    `VELOUR_AUTH_TOKEN`) are ONLY used in local single-user stdio mode and are
+ *    never inherited by HTTP/SSE sessions.
+ * 2. Tools cannot override or mutate a session's Bearer token in HTTP mode;
+ *    tokens are bound exclusively by `index.ts` after upstream `/auth/me`
+ *    verification.
+ * 3. Defense-in-depth: `apiRequest` normalizes the URL path and enforces both
+ *    explicit `requiredRole` and endpoint/method classification before making
+ *    any upstream request, ensuring a `customer` or `public` session can never
+ *    reach an `admin` endpoint (even via path traversal or reserved slugs).
+ * 4. Upstream base URLs and credentials are never leaked in error responses.
+ * ============================================================================
  */
 
 import process from 'node:process';
-import { SessionContext } from './types.js';
+import { McpRole, SessionContext } from './types.js';
 
 export const API_BASE_URL =
-  process.env.VELOUR_API_URL?.replace(/\/$/, '') || 'https://velour-ecommerce-be.onrender.com';
+  process.env.VELOUR_API_URL?.replace(/\/+$/, '') || 'https://velour-ecommerce-be.onrender.com';
 
-let dynamicToken: string | null =
-  process.env.VELOUR_ADMIN_TOKEN || process.env.VELOUR_AUTH_TOKEN || null;
+const HTTP_MODE = Boolean(process.env.PORT) || process.env.MCP_TRANSPORT === 'sse';
+const CUSTOMER_REQUIRES_AUTH =
+  process.env.MCP_CUSTOMER_REQUIRE_AUTH === undefined
+    ? true
+    : ['1', 'true', 'yes', 'on'].includes(process.env.MCP_CUSTOMER_REQUIRE_AUTH.toLowerCase());
 
-let dynamicDeviceId: string =
-  process.env.VELOUR_DEVICE_ID || 'mcp-agent-device-session';
+// Stdio-only fallback credentials (never used in HTTP_MODE)
+let stdioToken: string | null = HTTP_MODE
+  ? null
+  : process.env.VELOUR_ADMIN_TOKEN || process.env.VELOUR_AUTH_TOKEN || null;
 
-// Session-isolated storage for tokens and device IDs
+const stdioDeviceId: string =
+  process.env.VELOUR_DEVICE_ID || 'mcp-stdio-session';
+
+const stdioRole = (): McpRole => {
+  const r = (process.env.MCP_ROLE ?? 'all').toLowerCase();
+  return r === 'public' || r === 'customer' || r === 'admin' || r === 'all' ? r : 'all';
+};
+
+// Session-isolated storage for verified tokens, roles, and device IDs
 const sessionContextMap = new Map<string, SessionContext>();
 
 export function setSessionContext(sessionId: string, ctx: Partial<SessionContext>): void {
-  const existing = sessionContextMap.get(sessionId) || {
-    role: 'all',
-    createdAt: Date.now(),
-  };
-  sessionContextMap.set(sessionId, { ...existing, ...ctx });
+  const existing = sessionContextMap.get(sessionId);
+  sessionContextMap.set(sessionId, {
+    role: ctx.role ?? existing?.role ?? 'public',
+    token: ctx.token !== undefined ? ctx.token : existing?.token,
+    deviceId: ctx.deviceId !== undefined ? ctx.deviceId : existing?.deviceId,
+    createdAt: existing?.createdAt ?? Date.now(),
+  });
 }
 
-export function getSessionContext(sessionId?: string): SessionContext {
-  if (sessionId && sessionContextMap.has(sessionId)) {
-    return sessionContextMap.get(sessionId)!;
+export function getSessionContext(sessionId?: string): SessionContext | null {
+  if (sessionId) {
+    return sessionContextMap.get(sessionId) ?? null;
   }
-  return {
-    role: 'all',
-    token: dynamicToken,
-    deviceId: dynamicDeviceId,
-    createdAt: Date.now(),
-  };
+  if (!HTTP_MODE) {
+    return {
+      role: stdioRole(),
+      token: stdioToken,
+      deviceId: stdioDeviceId,
+      createdAt: Date.now(),
+    };
+  }
+  return null;
 }
 
 export function removeSessionContext(sessionId: string): void {
   sessionContextMap.delete(sessionId);
 }
 
-export function setClientToken(token: string | null, sessionId?: string): void {
-  if (sessionId) {
-    setSessionContext(sessionId, { token });
-  } else {
-    dynamicToken = token;
-  }
+/**
+ * Updates the active token in local stdio mode only.
+ * In HTTP/SSE mode, session tokens are verified and bound by `index.ts`.
+ */
+export function setClientToken(token: string | null): boolean {
+  if (HTTP_MODE) return false;
+  stdioToken = token;
+  return true;
 }
 
-export function getClientToken(sessionId?: string): string | null {
-  if (sessionId) {
-    return getSessionContext(sessionId).token || dynamicToken;
+/**
+ * Safely encodes a single URL path segment and blocks path traversal or reserved words.
+ */
+export function safeSegment(value: string, disallowReserved: string[] = []): string {
+  const trimmed = value.trim();
+  if (
+    !trimmed ||
+    trimmed === '.' ||
+    trimmed === '..' ||
+    /[\/\\]/.test(trimmed) ||
+    disallowReserved.includes(trimmed.toLowerCase())
+  ) {
+    throw new Error('Invalid resource identifier');
   }
-  return dynamicToken;
+  return encodeURIComponent(trimmed);
 }
 
-export function setClientDeviceId(deviceId: string, sessionId?: string): void {
-  if (sessionId) {
-    setSessionContext(sessionId, { deviceId });
-  } else {
-    dynamicDeviceId = deviceId;
-  }
-}
+export type RequiredRole = 'public' | 'customer' | 'admin';
 
-export function getClientDeviceId(sessionId?: string): string {
-  if (sessionId) {
-    return getSessionContext(sessionId).deviceId || dynamicDeviceId;
-  }
-  return dynamicDeviceId;
-}
+const ROLE_RANK: Record<RequiredRole, number> = {
+  public: 0,
+  customer: 1,
+  admin: 2,
+};
 
-export function checkAuth(options: {
-  token?: string;
-  sessionId?: string;
-  roleRequired?: 'customer' | 'admin';
-}): { authorized: boolean; message?: string } {
-  const token = options.token || getClientToken(options.sessionId);
-  if (!token) {
-    if (options.roleRequired === 'admin') {
-      return {
-        authorized: false,
-        message: 'Forbidden: Administrator authentication token is required for this operation.',
-      };
-    }
-    return {
-      authorized: false,
-      message: 'Authentication Required: Please sign in or provide a customer Bearer token to perform this action.',
-    };
+/**
+ * Defense-in-depth classification of backend endpoints by minimum required role.
+ * Normalizes the path first so `..` segments cannot bypass prefix checks.
+ */
+function classifyEndpointRole(endpoint: string, method: string): RequiredRole {
+  const rawPath = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const path = new URL(rawPath, 'http://localhost').pathname.toLowerCase();
+  const upperMethod = method.toUpperCase();
+
+  // Strictly Admin routes & mutating operations
+  if (
+    path.startsWith('/admin') ||
+    path.startsWith('/inventory') ||
+    path.startsWith('/coupons/admin') ||
+    path.startsWith('/categories/admin') ||
+    path === '/orders/all' ||
+    path.startsWith('/orders/returns/all') ||
+    /^\/orders\/[^/]+\/status$/.test(path) ||
+    (path.startsWith('/products') && upperMethod !== 'GET') ||
+    (path.startsWith('/categories') && upperMethod !== 'GET') ||
+    (path.startsWith('/settings') && upperMethod !== 'GET') ||
+    (path.startsWith('/cms') && upperMethod !== 'GET')
+  ) {
+    return 'admin';
   }
-  return { authorized: true };
+
+  // Strictly Customer routes
+  if (
+    path.startsWith('/orders') ||
+    path.startsWith('/checkout') ||
+    path.startsWith('/cart') ||
+    path.startsWith('/wishlist') ||
+    path === '/auth/me' ||
+    (path.startsWith('/reviews') && upperMethod !== 'GET')
+  ) {
+    return 'customer';
+  }
+
+  return 'public';
 }
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
-  token?: string;
-  deviceId?: string;
   sessionId?: string;
-  params?: Record<string, any>;
-  body?: any;
+  requiredRole?: RequiredRole;
+  deviceId?: string;
+  params?: Record<string, unknown>;
+  body?: unknown;
 }
 
 export async function apiRequest(endpoint: string, options: RequestOptions = {}): Promise<any> {
   const method = options.method || 'GET';
-  const sessionCtx = getSessionContext(options.sessionId);
-  const token = options.token || sessionCtx.token || dynamicToken;
-  const deviceId = options.deviceId || sessionCtx.deviceId || dynamicDeviceId;
+  const inferredRole = classifyEndpointRole(endpoint, method);
+  const explicitRole = options.requiredRole || 'public';
+  const requiredRole: RequiredRole =
+    ROLE_RANK[inferredRole] >= ROLE_RANK[explicitRole] ? inferredRole : explicitRole;
 
-  let urlString = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const sessionCtx = getSessionContext(options.sessionId);
+
+  // In HTTP mode, every non-public call must match an active session
+  if (HTTP_MODE && !sessionCtx && requiredRole !== 'public') {
+    return {
+      isError: true,
+      status: 401,
+      message: 'Unauthorized: Active authenticated MCP session is required.',
+    };
+  }
+
+  const sessionRole: McpRole = sessionCtx?.role ?? 'public';
+  const token = sessionRole === 'public' ? null : (sessionCtx?.token ?? null);
+  const deviceId = options.deviceId || sessionCtx?.deviceId;
+
+  // Enforce Admin role boundary
+  if (requiredRole === 'admin') {
+    if (sessionRole !== 'admin' && sessionRole !== 'all') {
+      return {
+        isError: true,
+        status: 403,
+        message: 'Forbidden: Administrator privileges are required for this operation.',
+      };
+    }
+    if (!token) {
+      return {
+        isError: true,
+        status: 401,
+        message: 'Unauthorized: Administrator Bearer token is required.',
+      };
+    }
+  }
+
+  // Enforce Customer role boundary
+  if (requiredRole === 'customer') {
+    if (sessionRole === 'public') {
+      return {
+        isError: true,
+        status: 403,
+        message: 'Forbidden: Logged-in customer session is required for this operation.',
+      };
+    }
+    if (CUSTOMER_REQUIRES_AUTH && !token) {
+      return {
+        isError: true,
+        status: 401,
+        message: 'Unauthorized: Customer Bearer token is required.',
+      };
+    }
+  }
+
+  const normalizedPath = new URL(
+    endpoint.startsWith('/') ? endpoint : `/${endpoint}`,
+    'http://localhost',
+  ).pathname;
+  let urlString = `${API_BASE_URL}${normalizedPath}`;
 
   if (options.params && Object.keys(options.params).length > 0) {
     const url = new URL(urlString);
@@ -124,7 +238,7 @@ export async function apiRequest(endpoint: string, options: RequestOptions = {})
     Accept: 'application/json',
   };
 
-  if (options.body) {
+  if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
 
@@ -132,7 +246,7 @@ export async function apiRequest(endpoint: string, options: RequestOptions = {})
     headers['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
   }
 
-  if (deviceId) {
+  if (deviceId && /^[\w.:-]{1,128}$/.test(deviceId)) {
     headers['x-device-id'] = deviceId;
   }
 
@@ -140,43 +254,46 @@ export async function apiRequest(endpoint: string, options: RequestOptions = {})
     const response = await fetch(urlString, {
       method,
       headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: AbortSignal.timeout(15_000),
     });
 
     const contentType = response.headers.get('content-type') || '';
-    let responseData: any;
-
-    if (contentType.includes('application/json')) {
-      responseData = await response.json();
-    } else {
-      responseData = await response.text();
-    }
+    const responseData: any = contentType.includes('application/json')
+      ? await response.json()
+      : await response.text();
 
     if (!response.ok) {
       const errorMsg =
         typeof responseData === 'object' && responseData !== null
-          ? responseData.message || responseData.error || JSON.stringify(responseData)
-          : responseData;
+          ? responseData.message || responseData.error || 'Upstream request rejected'
+          : String(responseData || 'Upstream request rejected');
       return {
         isError: true,
         status: response.status,
         message: `HTTP ${response.status}: ${errorMsg}`,
-        details: responseData,
       };
     }
 
     return responseData;
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const isTimeout = err instanceof Error && err.name === 'TimeoutError';
     return {
       isError: true,
-      message: `Network request to ${urlString} failed: ${err.message}`,
+      status: isTimeout ? 504 : 502,
+      message: isTimeout ? 'Upstream API request timed out' : 'Upstream API request failed',
     };
   }
 }
 
-export function formatToolResponse(data: any): { content: { type: 'text'; text: string }[] } {
+export function formatToolResponse(data: any): {
+  content: { type: 'text'; text: string }[];
+  isError?: boolean;
+} {
+  const isError = Boolean(data && typeof data === 'object' && data.isError === true);
   const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
   return {
     content: [{ type: 'text', text }],
+    ...(isError ? { isError: true } : {}),
   };
 }
