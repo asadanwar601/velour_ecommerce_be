@@ -1,8 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { apiRequest, formatToolResponse } from '../client.js';
+import { McpRole } from '../types.js';
 
-export function registerAdminTools(server: McpServer): void {
+export function registerAdminTools(server: McpServer, role: McpRole = 'all'): void {
+  // Administrative Operations & Maintenance
+  if (role !== 'admin' && role !== 'all') {
+    return;
+  }
+
   // 1. Executive KPI Stats
   server.tool(
     'velour_admin_get_stats',
@@ -64,19 +70,18 @@ export function registerAdminTools(server: McpServer): void {
     },
   );
 
-  // 5. Invite a new admin user
+  // 5. Create & invite admin user
   server.tool(
     'velour_admin_invite_admin',
-    '[ADMIN] Create and invite a new Administrator user account directly into PostgreSQL.',
+    '[ADMIN] Create and provision a new Administrator account.',
     {
       email: z.string().email().describe('New admin email address'),
-      password: z.string().min(8).describe('Initial password for new admin'),
+      password: z.string().min(8).describe('Initial secure password'),
       firstName: z.string().min(1).describe('First name'),
       lastName: z.string().min(1).describe('Last name'),
-      phone: z.string().optional().describe('Contact phone'),
     },
     async (body) => {
-      const res = await apiRequest('/admin/users/invite-admin', {
+      const res = await apiRequest('/admin/invite', {
         method: 'POST',
         body,
       });
@@ -84,10 +89,10 @@ export function registerAdminTools(server: McpServer): void {
     },
   );
 
-  // 6. Archive / Deactivate user
+  // 6. Archive user account
   server.tool(
     'velour_admin_archive_user',
-    '[ADMIN] Deactivate/archive a user account.',
+    '[ADMIN] Soft-delete / deactivate a user account without deleting order history.',
     {
       userId: z.string().describe('User ID to archive'),
     },
@@ -99,12 +104,12 @@ export function registerAdminTools(server: McpServer): void {
     },
   );
 
-  // 7. Unarchive user
+  // 7. Unarchive user account
   server.tool(
     'velour_admin_unarchive_user',
-    '[ADMIN] Restore/unarchive a user account.',
+    '[ADMIN] Reactivate a previously archived user account.',
     {
-      userId: z.string().describe('User ID to restore'),
+      userId: z.string().describe('User ID to unarchive'),
     },
     async ({ userId }) => {
       const res = await apiRequest(`/admin/users/${userId}/unarchive`, {

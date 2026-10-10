@@ -1,8 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatToolResponse } from '../client.js';
+import { apiRequest, checkAuth, formatToolResponse } from '../client.js';
+import { McpRole } from '../types.js';
 
-export function registerProductTools(server: McpServer): void {
+export function registerProductTools(server: McpServer, role: McpRole = 'all'): void {
+  // Public & Customer Catalog Browsing Tools (1-8)
+  if (role === 'public' || role === 'customer' || role === 'all') {
   // 1. List products with filtering
   server.tool(
     'velour_products_list',
@@ -117,7 +120,10 @@ export function registerProductTools(server: McpServer): void {
       return formatToolResponse(res);
     },
   );
+  }
 
+  // Admin Product Management Tools (9-11)
+  if (role === 'admin' || role === 'all') {
   // 9. [Admin] Create product
   server.tool(
     'velour_products_create',
@@ -192,4 +198,5 @@ export function registerProductTools(server: McpServer): void {
       return formatToolResponse(res);
     },
   );
+  }
 }

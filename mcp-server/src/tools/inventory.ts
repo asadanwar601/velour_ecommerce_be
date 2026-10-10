@@ -1,8 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { apiRequest, formatToolResponse } from '../client.js';
+import { McpRole } from '../types.js';
 
-export function registerInventoryTools(server: McpServer): void {
+export function registerInventoryTools(server: McpServer, role: McpRole = 'all'): void {
+  // Inventory operations are strictly for Administrator maintenance
+  if (role !== 'admin' && role !== 'all') {
+    return;
+  }
+
   // 1. [Admin] Get low stock alerts
   server.tool(
     'velour_inventory_get_low_stock',

@@ -1,8 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { apiRequest, formatToolResponse } from '../client.js';
+import { McpRole } from '../types.js';
 
-export function registerWishlistTools(server: McpServer): void {
+export function registerWishlistTools(server: McpServer, role: McpRole = 'all'): void {
+  // Wishlist actions are available for logged-in Customers
+  if (role !== 'customer' && role !== 'all') {
+    return;
+  }
+
   // 1. Get saved wishlist
   server.tool(
     'velour_wishlist_get',

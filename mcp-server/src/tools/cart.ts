@@ -1,8 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { apiRequest, formatToolResponse } from '../client.js';
+import { McpRole } from '../types.js';
 
-export function registerCartTools(server: McpServer): void {
+export function registerCartTools(server: McpServer, role: McpRole = 'all'): void {
+  // Cart operations are available for logged-in Customers
+  if (role !== 'customer' && role !== 'all') {
+    return;
+  }
+
   // 1. Get active cart
   server.tool(
     'velour_cart_get',
